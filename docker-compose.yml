@@ -1,0 +1,9 @@
+services:
+  clawrelay-feishu-server:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
