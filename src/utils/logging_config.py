@@ -38,7 +38,8 @@ class BusinessLogFilter(logging.Filter):
 
 
 def setup_business_logging():
-    root_logger = logging.getLogger()
-    for handler in root_logger.handlers:
-        handler.addFilter(BusinessLogFilter())
-    print("[日志配置] 已启用简洁业务日志模式")
+    # 临时禁用日志过滤，用于调试
+    # root_logger = logging.getLogger()
+    # for handler in root_logger.handlers:
+    #     handler.addFilter(BusinessLogFilter())
+    print("[日志配置] 调试模式 - 显示全部日志")

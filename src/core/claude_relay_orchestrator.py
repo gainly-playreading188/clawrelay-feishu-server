@@ -96,7 +96,7 @@ class ClaudeRelayOrchestrator:
             effective_system_prompt = self._build_effective_system_prompt(is_new_session)
 
             session_url = f"{self.adapter.relay_url}/session/{relay_session_id}"
-            session_link = f"查看实时聊天记录: {session_url}" if is_new_session else ""
+            session_link = f"[查看实时聊天记录>>]({session_url})" if is_new_session else ""
 
             if on_stream_delta:
                 await on_stream_delta(
@@ -230,7 +230,7 @@ class ClaudeRelayOrchestrator:
             effective_system_prompt = self._build_effective_system_prompt(is_new_session)
 
             session_url = f"{self.adapter.relay_url}/session/{relay_session_id}"
-            session_link = f"查看实时聊天记录: {session_url}" if is_new_session else ""
+            session_link = f"[查看实时聊天记录>>]({session_url})" if is_new_session else ""
 
             if on_stream_delta:
                 await on_stream_delta(
@@ -355,25 +355,30 @@ class ClaudeRelayOrchestrator:
         text: str,
         finished: bool = False,
     ) -> str:
-        """构建展示内容: thinking + session_link + text
+        """构建展示内容
 
-        飞书不支持 <think> 标签，用 --- 分隔思考过程和正文。
+        流式过程中显示思考状态，完成后只保留 session_link + 正文。
         """
         parts = []
-        if thinking_lines or thinking_buf:
-            lines = list(thinking_lines)
-            if thinking_buf:
-                preview = thinking_buf[-200:]
-                prefix = "..." if len(thinking_buf) > 200 else ""
-                lines.append(f"{prefix}{preview}")
-            if finished:
-                parts.append("[思考过程]\n" + "\n".join(lines) + "\n---")
-            else:
+        if finished:
+            # 完成后清除思考过程，只保留链接和正文
+            if session_link:
+                parts.append(session_link)
+            if text:
+                parts.append(text)
+        else:
+            # 流式过程中显示思考状态
+            if thinking_lines or thinking_buf:
+                lines = list(thinking_lines)
+                if thinking_buf:
+                    preview = thinking_buf[-200:]
+                    prefix = "..." if len(thinking_buf) > 200 else ""
+                    lines.append(f"{prefix}{preview}")
                 parts.append("[思考中]\n" + "\n".join(lines))
-        if session_link:
-            parts.append(session_link)
-        if text:
-            parts.append(text)
+            if session_link:
+                parts.append(session_link)
+            if text:
+                parts.append(text)
         return "\n\n".join(parts)
 
     @staticmethod

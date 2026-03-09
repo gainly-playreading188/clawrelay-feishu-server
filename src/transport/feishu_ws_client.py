@@ -43,11 +43,14 @@ class FeishuWsClient:
 
     def _handle_message_event(self, data: P2ImMessageReceiveV1) -> None:
         """处理接收消息事件（同步回调，由 SDK 内部调用）"""
+        logger.info("[FeishuWs:%s] >>> 收到消息事件回调", self.bot_key)
         if self._on_message:
             try:
                 self._on_message(data)
             except Exception as e:
                 logger.error("[FeishuWs:%s] 消息处理异常: %s", self.bot_key, e, exc_info=True)
+        else:
+            logger.warning("[FeishuWs:%s] on_message 回调未设置", self.bot_key)
 
     def start(self):
         """启动 WebSocket 长连接（阻塞）"""

@@ -1,0 +1,12 @@
+bots:
+  default:
+    app_id: "YOUR_APP_ID"
+    app_secret: "YOUR_APP_SECRET"
+    description: My AI assistant
+    model: vllm/claude-sonnet-4-6
+    name: AI Assistant
+    relay_url: http://localhost:50009
+    working_dir: ""
+    system_prompt: ""
+    allowed_users: []
+    env_vars: {}

@@ -10,6 +10,7 @@
 
 import json
 import logging
+import re
 from typing import Optional
 
 import lark_oapi as lark
@@ -38,20 +39,20 @@ class FeishuAPI:
         logger.info("[FeishuAPI] 初始化完成")
 
     async def reply_text(self, message_id: str, text: str) -> Optional[str]:
-        """回复文本消息
+        """回复消息（自动选择 text 或 post 类型）
 
         Args:
             message_id: 要回复的消息ID
-            text: 回复文本
+            text: 回复文本（支持 [text](url) 格式的链接）
 
         Returns:
             回复消息的 message_id，失败返回 None
         """
-        content = json.dumps({"text": text})
+        msg_type, content = self._build_content(text)
         request = ReplyMessageRequest.builder() \
             .message_id(message_id) \
             .request_body(ReplyMessageRequestBody.builder()
-                          .msg_type("text")
+                          .msg_type(msg_type)
                           .content(content)
                           .build()) \
             .build()
@@ -69,20 +70,20 @@ class FeishuAPI:
         return reply_msg_id
 
     async def edit_text(self, message_id: str, text: str) -> bool:
-        """编辑文本消息（用于流式更新）
+        """编辑消息（自动选择 text 或 post 类型，用于流式更新）
 
         Args:
             message_id: 要编辑的消息ID
-            text: 新的文本内容
+            text: 新的文本内容（支持 [text](url) 格式的链接）
 
         Returns:
             是否成功
         """
-        content = json.dumps({"text": text})
+        msg_type, content = self._build_content(text)
         request = UpdateMessageRequest.builder() \
             .message_id(message_id) \
             .request_body(UpdateMessageRequestBody.builder()
-                          .msg_type("text")
+                          .msg_type(msg_type)
                           .content(content)
                           .build()) \
             .build()
@@ -156,3 +157,39 @@ class FeishuAPI:
 
         logger.info("[FeishuAPI] 下载资源成功: file_key=%s", file_key)
         return response.file.read()
+
+    # Markdown [text](url) 链接的正则
+    _LINK_RE = re.compile(r'\[([^\]]+)\]\((https?://[^)]+)\)')
+
+    def _build_content(self, text: str) -> tuple[str, str]:
+        """根据文本内容自动选择消息类型
+
+        包含 [text](url) 链接时使用 post 富文本，否则使用纯 text。
+
+        Returns:
+            (msg_type, content_json)
+        """
+        if self._LINK_RE.search(text):
+            return "post", self._text_to_post_content(text)
+        return "text", json.dumps({"text": text})
+
+    def _text_to_post_content(self, text: str) -> str:
+        """将含 Markdown 链接的文本转为飞书 post 富文本格式"""
+        paragraphs = []
+        for line in text.split("\n"):
+            nodes = []
+            last_end = 0
+            for m in self._LINK_RE.finditer(line):
+                # 链接前的普通文本
+                if m.start() > last_end:
+                    nodes.append({"tag": "text", "text": line[last_end:m.start()]})
+                # 超链接节点
+                nodes.append({"tag": "a", "text": m.group(1), "href": m.group(2)})
+                last_end = m.end()
+            # 剩余的普通文本
+            if last_end < len(line):
+                nodes.append({"tag": "text", "text": line[last_end:]})
+            if not nodes:
+                nodes.append({"tag": "text", "text": ""})
+            paragraphs.append(nodes)
+        return json.dumps({"zh_cn": {"content": paragraphs}})

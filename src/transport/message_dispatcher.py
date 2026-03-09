@@ -102,10 +102,18 @@ class MessageDispatcher:
 
         将异步处理任务调度到主事件循环。
         """
-        asyncio.run_coroutine_threadsafe(
+        logger.info("[Dispatcher:%s] on_message_event 被调用，准备调度异步任务", self.bot_key)
+        future = asyncio.run_coroutine_threadsafe(
             self._handle_message_event(data),
             self._loop,
         )
+
+        def _on_done(f):
+            exc = f.exception()
+            if exc:
+                logger.error("[Dispatcher:%s] 异步任务异常: %s", self.bot_key, exc, exc_info=exc)
+
+        future.add_done_callback(_on_done)
 
     # ---- 异步消息处理 ----
 
@@ -116,7 +124,7 @@ class MessageDispatcher:
         sender = event.sender
 
         message_id = message.message_id
-        msg_type = message.msg_type
+        msg_type = message.message_type
         chat_id = message.chat_id
         chat_type = message.chat_type  # "p2p" | "group"
         open_id = sender.sender_id.open_id
@@ -143,6 +151,8 @@ class MessageDispatcher:
         # 按消息类型路由
         if msg_type == "text":
             await self._handle_text(message_id, message, open_id, session_key, chat_type)
+        elif msg_type == "post":
+            await self._handle_post(message_id, message, open_id, session_key, chat_type)
         elif msg_type == "image":
             await self._handle_image(message_id, message, open_id, session_key, chat_type)
         elif msg_type == "file":
@@ -163,7 +173,6 @@ class MessageDispatcher:
             return
 
         # 过滤 @机器人 前缀
-        # 飞书 @机器人 格式: @_user_1 或 @机器人名
         content = re.sub(r'@_user_\d+\s*', '', content).strip()
         if self.bot_name and content.startswith(f"@{self.bot_name}"):
             content = content[len(f"@{self.bot_name}"):].strip()
@@ -171,6 +180,103 @@ class MessageDispatcher:
         if not content:
             return
 
+        await self._handle_text_content(message_id, message, content, user_id, session_key, chat_type)
+
+    async def _handle_post(self, message_id: str, message, user_id: str, session_key: str, chat_type: str):
+        """处理富文本(post)消息，提取文本和图片"""
+        try:
+            content_json = json.loads(message.content)
+        except (json.JSONDecodeError, AttributeError):
+            await self.feishu_api.reply_text(message_id, "富文本消息解析失败，请重试。")
+            return
+
+        # 飞书 post content 结构: {"title": "...", "content": [[{tag, ...}, ...], ...]}
+        # content 可能在 zh_cn / en_us / ja_jp 等语言 key 下
+        post_body = content_json
+        for lang_key in ("zh_cn", "en_us", "ja_jp"):
+            if lang_key in content_json:
+                post_body = content_json[lang_key]
+                break
+
+        title = post_body.get("title", "")
+        paragraphs = post_body.get("content", [])
+
+        text_parts = []
+        image_keys = []
+
+        if title:
+            text_parts.append(title)
+
+        for paragraph in paragraphs:
+            for element in paragraph:
+                tag = element.get("tag", "")
+                if tag == "text":
+                    text_parts.append(element.get("text", ""))
+                elif tag == "a":
+                    link_text = element.get("text", "")
+                    href = element.get("href", "")
+                    text_parts.append(f"{link_text}({href})" if href else link_text)
+                elif tag == "img":
+                    img_key = element.get("image_key", "")
+                    if img_key:
+                        image_keys.append(img_key)
+                elif tag == "at":
+                    # 跳过 @机器人 自身
+                    pass
+
+        text_content = "\n".join(text_parts).strip()
+        # 过滤 @机器人 前缀
+        text_content = re.sub(r'@_user_\d+\s*', '', text_content).strip()
+        if self.bot_name and text_content.startswith(f"@{self.bot_name}"):
+            text_content = text_content[len(f"@{self.bot_name}"):].strip()
+
+        if not text_content and not image_keys:
+            return
+
+        # 如果有图片，走多模态处理
+        if image_keys:
+            content_blocks = []
+            if text_content:
+                content_blocks.append({"type": "text", "text": text_content})
+            else:
+                content_blocks.append({"type": "text", "text": "[用户发送了富文本消息，包含图片] 请描述或分析图片内容"})
+
+            for img_key in image_keys:
+                image_bytes = await self.feishu_api.download_resource(message_id, img_key, "image")
+                if image_bytes:
+                    b64 = base64.b64encode(image_bytes).decode("utf-8")
+                    content_blocks.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b64}"},
+                    })
+
+            stream_id = uuid.uuid4().hex[:12]
+            log_context = {'chat_type': chat_type, 'message_type': 'post'}
+
+            reply_msg_id = await self.feishu_api.reply_text(message_id, "正在分析消息...")
+            if not reply_msg_id:
+                return
+
+            on_stream_delta = self._make_stream_delta_callback(reply_msg_id)
+
+            try:
+                await self.orchestrator.handle_multimodal_message(
+                    user_id=user_id,
+                    content_blocks=content_blocks,
+                    stream_id=stream_id,
+                    session_key=session_key,
+                    log_context=log_context,
+                    on_stream_delta=on_stream_delta,
+                )
+            except Exception as e:
+                logger.error("[Dispatcher:%s] 处理富文本消息失败: %s", self.bot_key, e, exc_info=True)
+                await self.feishu_api.edit_text(reply_msg_id, _friendly_error(e))
+        else:
+            # 纯文本富文本，当作普通文本处理
+            await self._handle_text_content(message_id, message, text_content, user_id, session_key, chat_type)
+
+    async def _handle_text_content(self, message_id: str, message, content: str, user_id: str, session_key: str, chat_type: str):
+        """处理已提取的纯文本内容（供 _handle_text 和 _handle_post 复用）"""
         # 检查命令
         normalized = content.strip().lower()
 
@@ -208,7 +314,7 @@ class MessageDispatcher:
                 await self.feishu_api.reply_text(message_id, f"命令处理出错：{e}")
             return
 
-        # 调用 AI 处理 - 流式编辑
+        # 调用 AI 处理
         stream_id = uuid.uuid4().hex[:12]
         log_context = {
             'chat_type': chat_type,
@@ -216,7 +322,6 @@ class MessageDispatcher:
             'message_type': 'text',
         }
 
-        # 先回复占位消息
         reply_msg_id = await self.feishu_api.reply_text(message_id, "正在思考中...")
         if not reply_msg_id:
             logger.error("[Dispatcher:%s] 回复占位消息失败", self.bot_key)
